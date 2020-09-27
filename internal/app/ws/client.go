@@ -28,8 +28,8 @@ var (
 )
 
 var upgrader = websocket.Upgrader{
-	ReadBufferSize:  1024,
-	WriteBufferSize: 1024,
+	ReadBufferSize:  0,
+	WriteBufferSize: 0,
 }
 
 // Client is a middleman between the websocket connection and the hub.
@@ -44,8 +44,8 @@ type Client struct {
 }
 
 type Message struct {
-	username string
-	message  string
+	username string `json:"username"`
+	message  string `json:"message"`
 }
 
 func (c *Client) readPump() {
@@ -53,6 +53,7 @@ func (c *Client) readPump() {
 		c.hub.unregister <- c
 		c.conn.Close()
 	}()
+
 	c.conn.SetReadLimit(maxMessageSize)
 	c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	c.conn.SetPongHandler(func(string) error {
@@ -62,6 +63,7 @@ func (c *Client) readPump() {
 
 	for {
 		_, message, err := c.conn.ReadMessage()
+
 		if err != nil {
 			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseAbnormalClosure) {
 				log.Printf("error: %v", err)
