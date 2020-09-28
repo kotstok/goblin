@@ -44,8 +44,8 @@ type Client struct {
 }
 
 type Message struct {
-	username string `json:"username"`
-	message  string `json:"message"`
+	Username string `json:"username"`
+	Message  string `json:"message"`
 }
 
 func (c *Client) readPump() {

@@ -1,6 +1,7 @@
 package server
 
 import (
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
 	"github.com/kotstok/goblin/internal/app/ws"
@@ -73,5 +74,36 @@ func (s *Server) handleIndex() http.HandlerFunc {
 		}
 
 		outputHTML(w, "index.html", nil)
+	}
+}
+
+func (s *Server) handleUserCreate() http.HandlerFunc {
+
+	type request struct {
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		req := &request{}
+
+		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
+			s.error(w, r, http.StatusBadRequest, err)
+			return
+		}
+
+		//todo: save new user
+	}
+}
+
+func (s *Server) error(w http.ResponseWriter, r *http.Request, code int, err error) {
+	s.respond(w, r, code, map[string]string{"error": err.Error()})
+}
+
+func (s *Server) respond(w http.ResponseWriter, r *http.Request, code int, data interface{}) {
+	w.WriteHeader(code)
+
+	if data != nil {
+		json.NewEncoder(w).Encode(data)
 	}
 }
