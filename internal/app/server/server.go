@@ -3,12 +3,17 @@ package server
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/adam-hanna/jwt-auth/jwt"
 	"github.com/gorilla/mux"
+	"github.com/kotstok/goblin/internal/app/errors"
 	"github.com/kotstok/goblin/internal/app/ws"
 	"html/template"
 	"log"
 	"net/http"
+	"time"
 )
+
+var restrictedRoute jwt.Auth
 
 type Server struct {
 	config *Config
@@ -23,6 +28,22 @@ func New(config *Config) *Server {
 }
 
 func (s *Server) Start() error {
+
+	authErr := jwt.New(&restrictedRoute, jwt.Options{
+		SigningMethodString:   "RS256",
+		PrivateKeyLocation:    "configs/keys/app.rsa",     // `$ openssl genrsa -out app.rsa 2048`
+		PublicKeyLocation:     "configs/keys/app.rsa.pub", // `$ openssl rsa -in app.rsa -pubout > app.rsa.pub`
+		RefreshTokenValidTime: 72 * time.Hour,
+		AuthTokenValidTime:    15 * time.Minute,
+		Debug:                 true,
+		IsDevEnv:              true,
+	})
+
+	if authErr != nil {
+		log.Println("Error initializing the JWT's!")
+		log.Fatal(authErr)
+	}
+
 	s.configureRouter()
 	s.configureWebSocket()
 
@@ -32,13 +53,19 @@ func (s *Server) Start() error {
 }
 
 func (s *Server) configureRouter() {
+	// Error handlers  [ http errors ]
+	s.router.MethodNotAllowedHandler = errors.MethodNotAllowedHandler()
+	s.router.NotFoundHandler = errors.NotFoundHandler()
+
 	//file server
-	s.router.Handle("/img/{rest}", http.StripPrefix("/img/", http.FileServer(http.Dir("web/public/img/"))))
-	s.router.PathPrefix("/js/{rest}").Handler(http.StripPrefix("/js/", http.FileServer(http.Dir("web/public/js/"))))
-	s.router.PathPrefix("/css/{rest}").Handler(http.StripPrefix("/css/", http.FileServer(http.Dir("web/public/css/"))))
+	s.router.Handle("/img/{n}", http.StripPrefix("/img/", http.FileServer(http.Dir("web/public/img/"))))
+	s.router.PathPrefix("/js/{n}").Handler(http.StripPrefix("/js/", http.FileServer(http.Dir("web/public/js/"))))
+	s.router.PathPrefix("/css/{n}").Handler(http.StripPrefix("/css/", http.FileServer(http.Dir("web/public/css/"))))
 
 	// chat router
-	s.router.HandleFunc("/", s.handleIndex())
+	s.router.Handle("/", restrictedRoute.Handler(s.handleIndex())).Methods("GET")
+	s.router.HandleFunc("/login", s.handleLogin()).Methods("GET")
+	s.router.HandleFunc("/auth", s.handleJsonAuth()).Methods("POST")
 }
 
 func (s *Server) configureWebSocket() {
@@ -47,27 +74,27 @@ func (s *Server) configureWebSocket() {
 
 	log.Println("Websocket Start: ok")
 
-	s.router.HandleFunc("/ws", func(w http.ResponseWriter, r *http.Request) {
+	s.router.Handle("/ws", restrictedRoute.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ws.HandleRegister(hub, w, r)
-	})
+	})))
 }
 
 func outputHTML(w http.ResponseWriter, filename string, data interface{}) {
-	t, err := template.ParseFiles("web/templates/" + filename)
+	tRoot := "web/templates/"
+	t, err := template.ParseFiles(tRoot+filename, tRoot+"base.html")
 	if err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
-	if err := t.Execute(w, data); err != nil {
+	if err := t.ExecuteTemplate(w, "base", data); err != nil {
 		http.Error(w, err.Error(), 500)
 		return
 	}
 }
 
 func (s *Server) handleIndex() http.HandlerFunc {
-	// ..
+	// .. INDEX page
 	return func(w http.ResponseWriter, r *http.Request) {
-
 		if r.Method != "GET" {
 			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 			return
@@ -77,33 +104,31 @@ func (s *Server) handleIndex() http.HandlerFunc {
 	}
 }
 
-func (s *Server) handleUserCreate() http.HandlerFunc {
+func (s *Server) handleLogin() http.HandlerFunc {
+	// .. LOGIN page
+	return func(w http.ResponseWriter, r *http.Request) {
+		outputHTML(w, "login.html", nil)
+	}
+}
 
-	type request struct {
-		Email    string `json:"email"`
-		Password string `json:"password"`
+func (s *Server) handleJsonAuth() http.HandlerFunc {
+	// .. JSON auth page
+
+	type Profile struct {
+		Name    string
+		Hobbies []string
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		req := &request{}
+		profile := Profile{"Alex", []string{"snowboarding", "programming"}}
 
-		if err := json.NewDecoder(r.Body).Decode(req); err != nil {
-			s.error(w, r, http.StatusBadRequest, err)
+		js, err := json.Marshal(profile)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 
-		//todo: save new user
-	}
-}
-
-func (s *Server) error(w http.ResponseWriter, r *http.Request, code int, err error) {
-	s.respond(w, r, code, map[string]string{"error": err.Error()})
-}
-
-func (s *Server) respond(w http.ResponseWriter, r *http.Request, code int, data interface{}) {
-	w.WriteHeader(code)
-
-	if data != nil {
-		json.NewEncoder(w).Encode(data)
+		w.Header().Set("Content-Type", "application/json")
+		w.Write(js)
 	}
 }

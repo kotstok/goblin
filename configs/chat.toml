@@ -1,1 +1,3 @@
 bind_addr = ":8888"
+app_secret = "CP57sIem2XzbQnVthsUI9eI91Di2E8tY2TxyUKYR"
+app_host = "localhost"

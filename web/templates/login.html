@@ -1,0 +1,21 @@
+{{define "stylesheets"}}
+    <link rel="stylesheet" type="text/css" href="/css/login.css">
+{{end}}
+
+{{define "content"}}
+    <div class="login">
+        <h1>Login</h1>
+        <form id="login-form" method="post" action="">
+            <input type="text" name="login" placeholder="Username" required="required" aria-label="Login"/>
+            <input type="password" name="passwd" placeholder="Password" required="required" aria-label="Password"/>
+            <button type="submit" class="btn btn-primary btn-block btn-large">Let me in.</button>
+        </form>
+    </div>
+{{end}}
+
+{{define "javascripts"}}
+    <script type="text/javascript" src="/js/login.js"></script>
+{{end}}
+
+
+
